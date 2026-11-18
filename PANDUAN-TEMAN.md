@@ -8,8 +8,8 @@ listing **2027** — anggap ini tiket gratis jangka panjang, bukan uang cepat.
 
 1. Buka link referral: **https://mine.sible.network/didinska**
 2. Pilih **Web App** → **Daftar**
-3. Isi email + buat password. Kolom **kode rujukan** isi: `didinska`
-   → dapat bonus **+10 SIBLE**
+3. Isi email + buat password (aturan server: **min 8 karakter, wajib ada huruf + angka**).
+   Kolom **kode rujukan** isi: `didinska` → dapat bonus **+10 SIBLE**
 4. Centang Ketentuan Layanan → **Buat Akun** → masukkan **kode OTP** dari email kamu
 5. Di beranda: **Start Mining**, lalu aktifkan **AI Accelerate** (3 tingkat, total +60%)
    → rate jadi **0,16 SIBLE/jam**
@@ -19,6 +19,14 @@ listing **2027** — anggap ini tiket gratis jangka panjang, bukan uang cepat.
 
 Syarat: VPS Linux + `python3` + `git`. Semua langkah dijalankan **kamu sendiri** —
 password & OTP **jangan pernah dibagikan ke siapa pun**, termasuk yang mengajakmu.
+
+**Belum daftar? Bisa sekalian daftar dari VPS** (sesudah `git clone` di bawah):
+
+```bash
+python3 sible_daftar.py   # daftar interaktif: email + password + OTP kamu sendiri,
+                          # referral otomatis didinska; token langsung tersimpan,
+                          # sesudahnya lewati --login, langsung --status
+```
 
 ```bash
 git clone https://github.com/didinska21/didinska-sible-keeper.git
