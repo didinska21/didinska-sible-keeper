@@ -78,7 +78,79 @@ def bar(pct, width=26):
     return "█" * fill + "░" * (width - fill)
 
 
-def fmt_panel(st):
+def _flat_nums(d, prefix="", out=None, depth=0):
+    """Ratakan semua angka dari dict bersarang -> [(path, value), ...]."""
+    if out is None:
+        out = []
+    if depth > 3 or not isinstance(d, dict):
+        return out
+    for k, v in d.items():
+        p = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out.append((p, v))
+        elif isinstance(v, dict):
+            _flat_nums(v, p, out, depth + 1)
+    return out
+
+
+def referral_rows(ref):
+    """Baris referral untuk panel, dari GET /referral/overview|breakdown|members.
+    Skema respons tidak terdokumentasi -> cari field secara toleran; bila tidak
+    ada yang cocok, tampilkan angka mentah apa adanya (jujur, tidak mengarang)."""
+    if not ref:
+        return []
+    ov, bd, mb = ref.get("overview") or {}, ref.get("breakdown") or {}, ref.get("members")
+    nums = _flat_nums(ov) + _flat_nums(bd)
+
+    def pick(*tokens, exclude=()):
+        for p, v in nums:
+            lp = p.lower()
+            if all(t in lp for t in tokens) and not any(x in lp for x in exclude):
+                return v
+        return None
+
+    f1 = pick("f1")
+    if f1 is None:
+        f1 = pick("level", "1")
+    if f1 is None:
+        f1 = pick("direct")
+    f2 = pick("f2")
+    if f2 is None:
+        f2 = pick("level", "2")
+    if f2 is None:
+        f2 = pick("indirect")
+    total = pick("total", exclude=("bonus", "earn", "reward", "point", "amount"))
+    bonus = pick("bonus")
+    if bonus is None:
+        bonus = pick("earn")
+    if bonus is None:
+        bonus = pick("reward", exclude=("hour", "rate"))
+
+    rows = []
+    if f1 is not None:
+        rows.append(("Invite F1", f"{f1} orang"))
+    if f2 is not None:
+        rows.append(("Invite F2", f"{f2} orang"))
+    if total is not None and total != f1:
+        rows.append(("Total invite", f"{total} orang"))
+    if bonus is not None:
+        rows.append(("Bonus referral", f"{bonus} SIBLE"))
+    items = mb.get("items") if isinstance(mb, dict) else mb
+    if isinstance(items, list) and items:
+        names = []
+        for it in items[:5]:
+            if isinstance(it, dict):
+                nm = it.get("username") or it.get("name") or it.get("email") or "?"
+                names.append(f"@{nm}" if not str(nm).startswith("@") else str(nm))
+        if names:
+            rows.append(("Invite terbaru", ", ".join(names)))
+    if not rows and nums:
+        for p, v in nums[:6]:
+            rows.append((p[:14], str(v)))
+    return rows
+
+
+def fmt_panel(st, ref=None):
     """Panel status mining — murni tampilan, data apa adanya dari /mining/status."""
     sess = st.get("session") or {}
     start, end, srv = parse_iso(st.get("slotStartsAt")), parse_iso(st.get("slotEndsAt")), parse_iso(st.get("serverTime"))
@@ -99,6 +171,7 @@ def fmt_panel(st):
     ]
     if sisa is not None:
         rows.append(("Sisa slot", fmt_dur(sisa)))
+    rows += referral_rows(ref)
     w = 58
     out = [f"{C['cyan']}╭{'─' * w}╮{C['reset']}",
            f"{C['cyan']}│{C['reset']} {C['bold']}⛏  SIBLE KEEPER — {now_wib()} WIB{C['reset']}{' ' * (w - 26)}{C['cyan']}│{C['reset']}",
@@ -191,6 +264,18 @@ class Keeper:
     def status(self):
         return self.authed("GET", "/mining/status")
 
+    def referral(self):
+        """Data invite untuk panel — best effort, gagal = None (panel tetap jalan)."""
+        ref = {}
+        for key, path in (("overview", "/referral/overview"),
+                          ("breakdown", "/referral/breakdown"),
+                          ("members", "/referral/members?limit=5&level=1")):
+            try:
+                ref[key] = self.authed("GET", path)
+            except ApiError:
+                ref[key] = None
+        return ref if any(ref.values()) else None
+
     def settle_claim(self):
         claim = self.authed("POST", "/mining/claim")
         cid, st = claim.get("claimId"), claim.get("status")
@@ -206,7 +291,8 @@ class Keeper:
 
     def once(self):
         st = self.status()
-        print(fmt_panel(st))
+        ref = self.referral()
+        print(fmt_panel(st, ref))
         sess = st.get("session") or {}
         if st.get("canClaim"):
             out = self.settle_claim()
@@ -223,7 +309,7 @@ class Keeper:
                 else:
                     raise
             st = self.status()
-            print(fmt_panel(st))
+            print(fmt_panel(st, ref))
         return st
 
     def loop(self):
@@ -270,7 +356,11 @@ if __name__ == "__main__":
     elif a.status:
         k = Keeper()
         st = k.status()
-        print(json.dumps(st, indent=2) if a.json else fmt_panel(st))
+        ref = k.referral()
+        if a.json:
+            print(json.dumps({"mining": st, "referral": ref}, indent=2))
+        else:
+            print(fmt_panel(st, ref))
     elif a.loop:
         Keeper().loop()
     else:
